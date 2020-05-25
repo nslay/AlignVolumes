@@ -42,10 +42,10 @@
 #include "itkResampleImageFilter.h"
 
 void Usage(const char *p_cArg0) {
-  std::cerr << "Usage: " << p_cArg0 << " [-h] [-r resolution] -o outputFolder targetVolume sourceVolume [sourceVolume2 ...]" << std::endl;
+  std::cerr << "Usage: " << p_cArg0 << " [-h] [-r resolution] [-o outputFolder] targetVolume sourceVolume [sourceVolume2 ...]" << std::endl;
   std::cerr << "Options:" << std::endl;
   std::cerr << "-h -- This help message." << std::endl;
-  std::cerr << "-o -- Output folder where aligned volumes are saved." << std::endl;
+  std::cerr << "-o -- Output folder where aligned volumes are saved (default: output)." << std::endl;
   std::cerr << "-r -- Set voxel spacing to be XxYxZ where X, Y and Z specify new X, Y and Z axis spacing. These values may be 0 or negative to keep the corresponding input X, Y or Z spacing." << std::endl;
   exit(1);
 }
