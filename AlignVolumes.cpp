@@ -42,8 +42,9 @@
 #include "itkResampleImageFilter.h"
 
 void Usage(const char *p_cArg0) {
-  std::cerr << "Usage: " << p_cArg0 << " [-h] [-r resolution] [-o outputFolder] targetVolume sourceVolume [sourceVolume2 ...]" << std::endl;
+  std::cerr << "Usage: " << p_cArg0 << " [-ch] [-r resolution] [-o outputFolder] targetVolume sourceVolume [sourceVolume2 ...]" << std::endl;
   std::cerr << "Options:" << std::endl;
+  std::cerr << "-c -- Compress output images." << std::endl;
   std::cerr << "-h -- This help message." << std::endl;
   std::cerr << "-o -- Output folder where aligned volumes are saved (default: output)." << std::endl;
   std::cerr << "-r -- Set voxel spacing to be XxYxZ where X, Y and Z specify new X, Y and Z axis spacing. These values may be 0 or negative to keep the corresponding input X, Y or Z spacing." << std::endl;
@@ -99,7 +100,7 @@ public:
 
   virtual bool Good() const = 0;
   virtual bool LoadImg(const std::string &strImagePath) = 0;
-  virtual bool SaveImg(const std::string &strImagePath) = 0;
+  virtual bool SaveImg(const std::string &strImagePath, bool bCompress) = 0;
   virtual bool Initialize() = 0;
   virtual void SetPixel(const PointType &clPatientPoint) = 0;
   virtual void SetPixel(const IndexType &clIndex) = 0;
@@ -169,16 +170,16 @@ public:
     return true;
   }
 
-  virtual bool SaveImg(const std::string &strImagePath) override {
+  virtual bool SaveImg(const std::string &strImagePath, bool bCompress) override {
     if (!m_p_clOutputImage || !m_p_clInputImage)
       return false;
 
     if (GetExtension(strImagePath).empty()) {
       m_p_clOutputImage->SetMetaDataDictionary(m_p_clInputImage->GetMetaDataDictionary());
-      return ::SaveDicomImage(m_p_clOutputImage.GetPointer(), strImagePath);
+      return ::SaveDicomImage(m_p_clOutputImage.GetPointer(), strImagePath, bCompress);
     }
 
-    return ::SaveImg(m_p_clOutputImage.GetPointer(), strImagePath);
+    return ::SaveImg(m_p_clOutputImage.GetPointer(), strImagePath, bCompress);
   }
 
   virtual bool Initialize() override {
@@ -265,9 +266,14 @@ int main(int argc, char **argv) {
   ImageResamplerBase::SpacingType clNewSpacing;
   clNewSpacing.Fill(0.0);
 
+  bool bCompress = false;
+
   int c = 0;
-  while ((c = getopt(argc, argv, "ho:r:")) != -1) {
+  while ((c = getopt(argc, argv, "cho:r:")) != -1) {
     switch (c) {
+    case 'c':
+      bCompress = true;
+      break;
     case 'h':
       Usage(p_cArg0);
       break;
@@ -361,7 +367,7 @@ int main(int argc, char **argv) {
 
     std::cout << "Info: Saving '" << strOutputImagePath << "' ..." << std::endl;
 
-    if (!p_clTarget->SaveImg(strOutputImagePath)) {
+    if (!p_clTarget->SaveImg(strOutputImagePath, bCompress)) {
       std::cerr << "Error: Failed to save image '" << strOutputImagePath << "'." << std::endl;
       return -1;
     }
@@ -397,7 +403,7 @@ int main(int argc, char **argv) {
 
     std::cout << "Info: Saving '" << strOutputImagePath << "' ..." << std::endl;
 
-    if (!p_clSource->SaveImg(strOutputImagePath)) {
+    if (!p_clSource->SaveImg(strOutputImagePath, bCompress)) {
       std::cerr << "Error: Failed to save image '" << strOutputImagePath << "'." << std::endl;
       return -1;
     }
