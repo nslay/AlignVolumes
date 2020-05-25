@@ -43,7 +43,7 @@
 
 void Usage(const char *p_cArg0) {
   std::cerr << "Usage: " << p_cArg0 << " [-ch] [-r resolution] [-o outputFolder] targetVolume sourceVolume [sourceVolume2 ...]" << std::endl;
-  std::cerr << "Options:" << std::endl;
+  std::cerr << "\nOptions:" << std::endl;
   std::cerr << "-c -- Compress output images." << std::endl;
   std::cerr << "-h -- This help message." << std::endl;
   std::cerr << "-o -- Output folder where aligned volumes are saved (default: output)." << std::endl;
