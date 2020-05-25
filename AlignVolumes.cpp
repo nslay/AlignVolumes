@@ -47,7 +47,7 @@ void Usage(const char *p_cArg0) {
   std::cerr << "-c -- Compress output images." << std::endl;
   std::cerr << "-h -- This help message." << std::endl;
   std::cerr << "-o -- Output folder where aligned volumes are saved (default: output)." << std::endl;
-  std::cerr << "-r -- Set voxel spacing to be XxYxZ where X, Y and Z specify new X, Y and Z axis spacing. These values may be 0 or negative to keep the corresponding input X, Y or Z spacing." << std::endl;
+  std::cerr << "-r -- Set voxel spacing to be XxYxZ where X, Y and Z specify new X, Y and Z axis spacing (format 'XxYxZ'). These values may be 0 or negative to keep the corresponding input target volume X, Y or Z spacing." << std::endl;
   exit(1);
 }
 
