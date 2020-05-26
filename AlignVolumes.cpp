@@ -40,14 +40,19 @@
 #include "itkImageIOFactory.h"
 #include "itkGDCMImageIO.h"
 #include "itkResampleImageFilter.h"
+#include "itkLinearInterpolateImageFunction.h"
+#include "itkNearestNeighborInterpolateImageFunction.h"
 
 void Usage(const char *p_cArg0) {
-  std::cerr << "Usage: " << p_cArg0 << " [-ch] [-r resolution] [-o outputFolder] targetVolume sourceVolume [sourceVolume2 ...]" << std::endl;
+  std::cerr << "Usage: " << p_cArg0 << " [-ch] [-r resolution] [-s size] [-o outputFolder] [-i nearest|linear] targetVolume sourceVolume [sourceVolume2 ...]" << std::endl;
   std::cerr << "\nOptions:" << std::endl;
   std::cerr << "-c -- Compress output images." << std::endl;
   std::cerr << "-h -- This help message." << std::endl;
+  std::cerr << "-i -- Interpolator type (default: nearest). May be one of 'nearest' or 'linear'." << std::endl;
   std::cerr << "-o -- Output folder where aligned volumes are saved (default: output)." << std::endl;
-  std::cerr << "-r -- Set voxel spacing to be XxYxZ where X, Y and Z specify new X, Y and Z axis spacing (format 'XxYxZ'). These values may be 0 or negative to keep the corresponding input target volume X, Y or Z spacing." << std::endl;
+  std::cerr << "-r -- Set voxel spacing to be XxYxZ where X, Y and Z specify the new X, Y and Z axis spacings (format 'XxYxZ'). These values may be 0 or negative to keep the corresponding input target volume X, Y or Z spacings." << std::endl;
+  std::cerr << "-s -- Set image dimensions to be XxYxZ where X, Y and Z specify the new X, Y and Z dimensions (format 'XxYxZ'). These values may be 0 to keep the corresponding input target volume X, Y or Z dimensions." << std::endl;
+  std::cerr << "\nNOTE: Only one of -r or -s may be specified." << std::endl;
   exit(1);
 }
 
@@ -95,31 +100,15 @@ public:
   typedef ImageType::PointType PointType;
   typedef ImageType::SizeType SizeType;
   typedef itk::Index<3> IndexType;
+  enum InterpolationType { NEAREST, LINEAR };
 
   virtual ~ImageResamplerBase() = default;
 
   virtual bool Good() const = 0;
   virtual bool LoadImg(const std::string &strImagePath) = 0;
   virtual bool SaveImg(const std::string &strImagePath, bool bCompress) = 0;
-  virtual bool Initialize() = 0;
-  virtual void SetPixel(const PointType &clPatientPoint) = 0;
-  virtual void SetPixel(const IndexType &clIndex) = 0;
 
-  virtual void Resample() {
-    if (!Good())
-      return;
-
-    const SizeType clSize = GetOutputSize();
-
-    for (itk::IndexValueType z = 0; itk::SizeValueType(z) < clSize[2]; ++z) {
-      for (itk::IndexValueType y = 0; itk::SizeValueType(y) < clSize[1]; ++y) {
-        for (itk::IndexValueType x = 0; itk::SizeValueType(x) < clSize[0]; ++x) {
-          const IndexType clIndex = {{ x, y, z }};
-          SetPixel(clIndex);
-        }
-      }
-    }
-  }
+  virtual bool Resample() = 0;
 
   virtual const DirectionType & GetInputDirection() const = 0;
   virtual const SpacingType & GetInputSpacing() const = 0;
@@ -136,17 +125,36 @@ public:
   virtual void SetOutputOrigin(const PointType &clOutputOrigin) { m_clOutputOrigin = clOutputOrigin; }
   virtual void SetOutputSize(const SizeType &clOutputSize) { m_clOutputSize = clOutputSize; }
 
+  virtual void SetInterpolationType(InterpolationType eInterpolationType) { m_eInterpolationType = eInterpolationType; }
+  virtual InterpolationType GetInterpolationType() const { return m_eInterpolationType; }
+
+  virtual bool SetInterpolationType(const std::string &strInterpolationType) {
+    if (strInterpolationType == "nearest")
+      SetInterpolationType(NEAREST);
+    else if (strInterpolationType == "linear")
+      SetInterpolationType(LINEAR);
+    else
+      return false;
+
+    return true;
+  }
+
 private:
   DirectionType m_clOutputDirection;
   SpacingType m_clOutputSpacing;
   PointType m_clOutputOrigin;
   SizeType m_clOutputSize;
+  InterpolationType m_eInterpolationType = NEAREST;
 };
 
 template<typename PixelType>
 class ImageResampler : public ImageResamplerBase {
 public:
   typedef itk::Image<PixelType, 3> ImageType;
+  typedef itk::ResampleImageFilter<ImageType, ImageType> ResamplerType;
+  typedef itk::InterpolateImageFunction<ImageType> InterpolatorType;
+  typedef itk::NearestNeighborInterpolateImageFunction<ImageType> NearestNeigborInterpolationType;
+  typedef itk::LinearInterpolateImageFunction<ImageType> LinearInterpolationType;
 
   virtual ~ImageResampler() = default;
 
@@ -182,58 +190,47 @@ public:
     return ::SaveImg(m_p_clOutputImage.GetPointer(), strImagePath, bCompress);
   }
 
-  virtual bool Initialize() override {
+  virtual bool Resample() override {
+    m_p_clOutputImage = nullptr;
+
     if (!Good())
       return false;
 
-    m_p_clOutputImage = ImageType::New();
-    m_p_clOutputImage->SetRegions(GetOutputSize());
+    typename ResamplerType::Pointer p_clResampler = ResamplerType::New();
+
+    p_clResampler->SetDefaultPixelValue(ZeroPixel<PixelType>::Value());
+    p_clResampler->SetSize(GetOutputSize());
+    p_clResampler->SetOutputSpacing(GetOutputSpacing());
+    p_clResampler->SetOutputOrigin(GetOutputOrigin());
+    p_clResampler->SetOutputDirection(GetOutputDirection());
+
+    typename InterpolatorType::Pointer p_clInterpolator;
+
+    switch (GetInterpolationType()) {
+    case NEAREST:
+      p_clInterpolator = NearestNeigborInterpolationType::New();
+      break;
+    case LINEAR:
+      p_clInterpolator = LinearInterpolationType::New();
+      break;
+    }
+
+    if (!p_clInterpolator)
+      return false;
+
+    p_clResampler->SetInterpolator(p_clInterpolator);
+    p_clResampler->SetInput(m_p_clInputImage);
 
     try {
-      m_p_clOutputImage->Allocate();
+      p_clResampler->Update();
+      m_p_clOutputImage = p_clResampler->GetOutput();
     }
     catch (itk::ExceptionObject &e) {
-      std::cerr << "Error: " << e.what() << std::endl;
+      std::cerr << "Error: Failed to resample image: " << e.what() << std::endl;
       return false;
     }
 
-    m_p_clOutputImage->SetDirection(GetOutputDirection());
-    m_p_clOutputImage->SetSpacing(GetOutputSpacing());
-    m_p_clOutputImage->SetOrigin(GetOutputOrigin());
-
-    m_p_clOutputImage->FillBuffer(ZeroPixel<PixelType>::Value());
-
     return true;
-  }
-
-  virtual void SetPixel(const PointType &clPatientPoint) override {
-    if (!m_p_clInputImage || !m_p_clOutputImage)
-      return;
-
-    // TODO: Interpolation in the future
-    IndexType clInputIndex, clOutputIndex;
-    if (!m_p_clInputImage->TransformPhysicalPointToIndex(clPatientPoint, clInputIndex) || !m_p_clOutputImage->TransformPhysicalPointToIndex(clPatientPoint, clOutputIndex))
-      return;
-
-    m_p_clOutputImage->SetPixel(clOutputIndex, m_p_clInputImage->GetPixel(clInputIndex));
-  }
-
-  virtual void SetPixel(const IndexType &clOutputIndex) override {
-    if (!m_p_clInputImage || !m_p_clOutputImage)
-      return;
-
-    // TODO: Interpolation in the future    
-    if (!m_p_clOutputImage->GetBufferedRegion().IsInside(clOutputIndex))
-      return;
-
-    PointType clPatientPoint;
-    m_p_clOutputImage->TransformIndexToPhysicalPoint(clOutputIndex, clPatientPoint);
-
-    IndexType clInputIndex;
-    if (!m_p_clInputImage->TransformPhysicalPointToIndex(clPatientPoint, clInputIndex))
-      return;
-
-    m_p_clOutputImage->SetPixel(clOutputIndex, m_p_clInputImage->GetPixel(clInputIndex));
   }
 
   virtual const DirectionType & GetInputDirection() const override { return m_p_clInputImage->GetDirection(); }
@@ -262,20 +259,27 @@ int main(int argc, char **argv) {
   const char * const p_cArg0 = argv[0];
 
   std::string strOutputImageFolder = "output";
+  std::string strInterpolatorType = "nearest";
 
   ImageResamplerBase::SpacingType clNewSpacing;
   clNewSpacing.Fill(0.0);
 
+  ImageResamplerBase::SizeType clNewSize;
+  clNewSize.Fill(0);
+
   bool bCompress = false;
 
   int c = 0;
-  while ((c = getopt(argc, argv, "cho:r:")) != -1) {
+  while ((c = getopt(argc, argv, "chi:o:r:s:")) != -1) {
     switch (c) {
     case 'c':
       bCompress = true;
       break;
     case 'h':
       Usage(p_cArg0);
+      break;
+    case 'i':
+      strInterpolatorType = optarg;
       break;
     case 'o':
       strOutputImageFolder = optarg;
@@ -300,6 +304,26 @@ int main(int argc, char **argv) {
           Usage(p_cArg0);
       }
       break;
+    case 's':
+      {
+        char *p = nullptr;
+
+        clNewSize[0] = strtoul(optarg, &p, 10);
+
+        if (*p != 'x' || *(p+1) == 'x' || *(p+1) == '\0')
+          Usage(p_cArg0);
+
+        clNewSize[1] = strtoul(p+1, &p, 10);
+
+        if (*p != 'x' || *(p+1) == 'x' || *(p+1) == '\0')
+          Usage(p_cArg0);
+
+        clNewSize[2] = strtoul(p+1, &p, 10);
+
+        if (*p != '\0')
+          Usage(p_cArg0);
+      }
+      break;
     case '?':
     default:
       Usage(p_cArg0);
@@ -316,6 +340,10 @@ int main(int argc, char **argv) {
   }
 
   const bool bNewResolution = (clNewSpacing[0] > 0.0 || clNewSpacing[1] > 0.0 || clNewSpacing[2] > 0.0);
+  const bool bNewSize = (clNewSize[0] > 0 || clNewSize[1] > 0 || clNewSize[2] > 0);
+
+  if (bNewResolution && bNewSize)
+    Usage(p_cArg0);
 
   std::cout << "Info: Loading target '" << argv[0] << "' ..." << std::endl;
   std::unique_ptr<ImageResamplerBase> p_clTarget = MakeResampler(argv[0]);
@@ -353,15 +381,43 @@ int main(int argc, char **argv) {
     p_clTarget->SetOutputSize(clOutputSize);
   }
 
-  if (!p_clTarget->Initialize()) {
-    std::cerr<< "Error: Failed to initialize target resampler." << std::endl;
+  if (bNewSize) {
+    ImageResamplerBase::SpacingType clOutputSpacing = p_clTarget->GetInputSpacing();
+    ImageResamplerBase::SizeType clOutputSize = p_clTarget->GetInputSize();
+
+    if (clNewSize[0] > 0) {
+      clOutputSpacing[0] = itk::SpacePrecisionType(clOutputSize[0]*clOutputSpacing[0]/clNewSize[0]);
+      clOutputSize[0] = clNewSize[0];
+    }
+
+    if (clNewSize[1] > 0) {
+      clOutputSpacing[1] = itk::SpacePrecisionType(clOutputSize[1]*clOutputSpacing[1]/clNewSize[1]);
+      clOutputSize[1] = clNewSize[1];
+    }
+
+    if (clNewSize[2] > 0) {
+      clOutputSpacing[2] = itk::SpacePrecisionType(clOutputSize[2]*clOutputSpacing[2]/clNewSize[2]);
+      clOutputSize[2] = clNewSize[2];
+    }
+
+    std::cout << "Info: Resampling all volumes to have spacing " << clOutputSpacing << " and size " << clOutputSize << '.' << std::endl;
+
+    p_clTarget->SetOutputSpacing(clOutputSpacing);
+    p_clTarget->SetOutputSize(clOutputSize);
+  }
+
+  if (!p_clTarget->SetInterpolationType(strInterpolatorType)) {
+    std::cerr << "Error: Unrecognized interpolation type '" << strInterpolatorType << "'." << std::endl;
     return -1;
   }
 
   if (bNewResolution) {
     std::cout << "Info: Resampling target volume ..." << std::endl;
 
-    p_clTarget->Resample();
+    if (!p_clTarget->Resample()) {
+      std::cerr<< "Error: Failed to resample target volume." << std::endl;
+      return -1;
+    }
 
     const std::string strOutputImagePath = MakeOutputPath(argv[0], strOutputImageFolder);
 
@@ -389,17 +445,16 @@ int main(int argc, char **argv) {
     p_clSource->SetOutputSpacing(p_clTarget->GetOutputSpacing());
     p_clSource->SetOutputOrigin(p_clTarget->GetOutputOrigin());
     p_clSource->SetOutputSize(p_clTarget->GetOutputSize());
-
-    if (!p_clSource->Initialize()) {
-      std::cerr << "Error: Failed to initialize source resampler." << std::endl;
-      return -1;
-    }
+    p_clSource->SetInterpolationType(p_clTarget->GetInterpolationType());
 
     const std::string strOutputImagePath = MakeOutputPath(strInputImagePath, strOutputImageFolder);
 
     std::cout << "Info: Resampling source volume ..." << std::endl;
 
-    p_clSource->Resample();
+    if (!p_clSource->Resample()) {
+      std::cerr<< "Error: Failed to resample source volume." << std::endl;
+      return -1;
+    }
 
     std::cout << "Info: Saving '" << strOutputImagePath << "' ..." << std::endl;
 
@@ -524,7 +579,7 @@ std::unique_ptr<ImageResamplerBase> MakeResampler(const std::string &strImagePat
   case itk::ImageIOBase::VECTOR:
     // TODO: Finish this?
     break;
-   default:
+  default:
     break;
   }
 
