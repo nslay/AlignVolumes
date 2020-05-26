@@ -411,7 +411,7 @@ int main(int argc, char **argv) {
     return -1;
   }
 
-  if (bNewResolution) {
+  if (bNewResolution || bNewSize) {
     std::cout << "Info: Resampling target volume ..." << std::endl;
 
     if (!p_clTarget->Resample()) {
