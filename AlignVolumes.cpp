@@ -474,7 +474,7 @@ std::unique_ptr<ImageResamplerBase> MakeResampler(const std::string &strImagePat
 
   if (IsFolder(strImagePath)) {
     std::vector<std::string> vFiles;
-    FindFiles(strImagePath.c_str(), "*", vFiles, false);
+    FindDicomFiles(strImagePath.c_str(), "*", vFiles, false);
 
     if (vFiles.empty())
       return std::unique_ptr<ImageResamplerBase>();

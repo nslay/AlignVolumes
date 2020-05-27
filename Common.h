@@ -48,8 +48,10 @@
 #include <cstdint>
 #include <algorithm>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 #include <type_traits>
 
@@ -145,7 +147,10 @@ template<>
 void EncapsulateStringMetaData<itk::Point<double, 2>>(itk::MetaDataDictionary &clTags, const std::string &strKey, const itk::Point<double, 2> &clPoint);
 
 template<>
-void EncapsulateStringMetaData<itk::Matrix<itk::SpacePrecisionType, 3, 3>>(itk::MetaDataDictionary &clTags, const std::string &strKey, const itk::Matrix<itk::SpacePrecisionType, 3, 3> &value);
+void EncapsulateStringMetaData<itk::Matrix<float, 3, 3>>(itk::MetaDataDictionary &clTags, const std::string &strKey, const itk::Matrix<float, 3, 3> &value);
+
+template<>
+void EncapsulateStringMetaData<itk::Matrix<double, 3, 3>>(itk::MetaDataDictionary &clTags, const std::string &strKey, const itk::Matrix<double, 3, 3> &value);
 
 template<typename ValueType>
 bool ExposeCSAMetaData(gdcm::CSAHeader &clHeader, const std::string &strKey, ValueType &value);
@@ -163,6 +168,7 @@ bool GetOrigin(const itk::MetaDataDictionary &clDicomTags, vnl_vector_fixed<Real
 void SanitizeFileName(std::string &strFileName); // Does NOT operate on paths
 void FindFiles(const char *p_cDir, const char *p_cPattern, std::vector<std::string> &vFiles, bool bRecursive = false);
 void FindFolders(const char *p_cDir, const char *p_cPattern, std::vector<std::string> &vFolders, bool bRecursive = false);
+void FindDicomFiles(const char *p_cDir, const char *p_cPattern, std::vector<std::string> &vFiles, bool bRecursive = false);
 void FindDicomFolders(const char *p_cDir, const char *p_cPattern, std::vector<std::string> &vFolders, bool bRecursive = false);
 
 // Use LoadImg since Windows #defines LoadImage ... lame
@@ -721,10 +727,10 @@ bool SaveDicomImage(itk::Image<PixelType, Dimension> *p_clImage, const std::stri
     strNewSeriesUID = clGenUID.Generate();
   }
 
-  DictionaryArrayType clDictionaryArray;
+  std::vector<std::unique_ptr<itk::MetaDataDictionary>> vDictionaries;
 
   for (itk::IndexValueType z = 0; itk::SizeValueType(z) < clSize[2]; ++z) {
-    DictionaryRawPointer p_clNewTags = new itk::MetaDataDictionary();
+    std::unique_ptr<itk::MetaDataDictionary> p_clNewTags = std::make_unique<itk::MetaDataDictionary>();
 
     CopyStringMetaData(*p_clNewTags, clRefTags);
 
@@ -775,8 +781,15 @@ bool SaveDicomImage(itk::Image<PixelType, Dimension> *p_clImage, const std::stri
       p_clNewTags->Erase("0028|0107");
     }
 
-    clDictionaryArray.push_back(p_clNewTags);
+    vDictionaries.emplace_back(std::move(p_clNewTags));
   }
+
+  DictionaryArrayType clDictionaryArray(vDictionaries.size(), nullptr);
+
+  std::transform(vDictionaries.begin(), vDictionaries.end(), clDictionaryArray.begin(),
+    [](const std::unique_ptr<itk::MetaDataDictionary> &p_clTags) -> DictionaryRawPointer {
+      return p_clTags.get();
+    });
 
   MkDir(strPath);
 
