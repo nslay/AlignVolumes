@@ -144,6 +144,9 @@ void EncapsulateStringMetaData<itk::Point<double, 3>>(itk::MetaDataDictionary &c
 template<>
 void EncapsulateStringMetaData<itk::Point<double, 2>>(itk::MetaDataDictionary &clTags, const std::string &strKey, const itk::Point<double, 2> &clPoint);
 
+template<>
+void EncapsulateStringMetaData<itk::Matrix<itk::SpacePrecisionType, 3, 3>>(itk::MetaDataDictionary &clTags, const std::string &strKey, const itk::Matrix<itk::SpacePrecisionType, 3, 3> &value);
+
 template<typename ValueType>
 bool ExposeCSAMetaData(gdcm::CSAHeader &clHeader, const std::string &strKey, ValueType &value);
 
@@ -755,6 +758,8 @@ bool SaveDicomImage(itk::Image<PixelType, Dimension> *p_clImage, const std::stri
     // Slice thickness and spacing between slices (probably not right, but from ITK example!)
     EncapsulateStringMetaData(*p_clNewTags, "0018|0050", clSpacing[2]);
     EncapsulateStringMetaData(*p_clNewTags, "0018|0088", clSpacing[2]);
+
+    EncapsulateStringMetaData(*p_clNewTags, "0020|0037", clDirection);
 
     const PixelType * const p_begin = p_clImage->GetBufferPointer() + (z*clSize[0]*clSize[1]);
     const PixelType * const p_end = p_begin + (clSize[0]*clSize[1]);

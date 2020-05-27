@@ -263,6 +263,14 @@ void EncapsulateStringMetaData<itk::Point<double, 2>>(itk::MetaDataDictionary &c
 }
 
 template<>
+void EncapsulateStringMetaData<itk::Matrix<itk::SpacePrecisionType, 3, 3>>(itk::MetaDataDictionary &clTags, const std::string &strKey, const itk::Matrix<itk::SpacePrecisionType, 3, 3> &value) {
+  std::stringstream valueStream;
+  valueStream << value[0][0] << '\\' << value[1][0] << '\\' << value[2][0] << '\\' 
+    << value[0][1] << '\\' << value[1][1] << '\\' << value[2][1];
+  EncapsulateStringMetaData(clTags, strKey, valueStream.str());
+}
+
+template<>
 bool ExposeCSAMetaData<std::string>(gdcm::CSAHeader &clHeader, const std::string &strKey, std::string &strValue) {
   if (!clHeader.FindCSAElementByName(strKey.c_str()))
     return false;
