@@ -43,6 +43,16 @@
 #include "itkLinearInterpolateImageFunction.h"
 #include "itkNearestNeighborInterpolateImageFunction.h"
 
+#if ITK_VERSION_MAJOR > 4
+using IOFileModeEnum = itk::IOFileModeEnum;
+using IOComponentEnum = itk::IOComponentEnum;
+using IOPixelEnum = itk::IOPixelEnum;
+#else // ITK_VERSION_MAJOR <= 4
+using IOFileModeEnum = itk::ImageIOFactory;
+using IOComponentEnum = itk::ImageIOBase;
+using IOPixelEnum = itk::ImageIOBase;
+#endif // ITK_VERSION_MAJOR > 4
+
 void Usage(const char *p_cArg0) {
   std::cerr << "Usage: " << p_cArg0 << " [-ch] [-r resolution] [-s size] [-o outputFolder] [-i nearest|linear] targetVolume sourceVolume [sourceVolume2 ...]" << std::endl;
   std::cerr << "\nOptions:" << std::endl;
@@ -468,8 +478,8 @@ int main(int argc, char **argv) {
 }
 
 std::unique_ptr<ImageResamplerBase> MakeResampler(const std::string &strImagePath) {
-  itk::ImageIOBase::IOComponentType eComponentType = itk::ImageIOBase::UNKNOWNCOMPONENTTYPE;
-  itk::ImageIOBase::IOPixelType ePixelType = itk::ImageIOBase::UNKNOWNPIXELTYPE;
+  auto eComponentType = IOComponentEnum::UNKNOWNCOMPONENTTYPE;
+  auto ePixelType = IOPixelEnum::UNKNOWNPIXELTYPE;
   unsigned int uiNumberOfComponents = 0;
 
   if (IsFolder(strImagePath)) {
@@ -509,7 +519,7 @@ std::unique_ptr<ImageResamplerBase> MakeResampler(const std::string &strImagePat
     }
   }
   else {
-    itk::ImageIOBase::Pointer p_clImageIO = itk::ImageIOFactory::CreateImageIO(strImagePath.c_str(), itk::ImageIOFactory::ReadMode);
+    itk::ImageIOBase::Pointer p_clImageIO = itk::ImageIOFactory::CreateImageIO(strImagePath.c_str(), IOFileModeEnum::ReadMode);
 
     if (!p_clImageIO)
       return std::unique_ptr<ImageResamplerBase>();
@@ -531,52 +541,52 @@ std::unique_ptr<ImageResamplerBase> MakeResampler(const std::string &strImagePat
   std::unique_ptr<ImageResamplerBase> p_clResampler;
 
   switch (ePixelType) {
-  case itk::ImageIOBase::SCALAR:
+  case IOPixelEnum::SCALAR:
     switch (eComponentType) {
-    case itk::ImageIOBase::CHAR:
+    case IOComponentEnum::CHAR:
       p_clResampler = std::make_unique<ImageResampler<char>>();
       break;
-    case itk::ImageIOBase::UCHAR:
+    case IOComponentEnum::UCHAR:
       p_clResampler = std::make_unique<ImageResampler<unsigned char>>();
       break;
-    case itk::ImageIOBase::SHORT:
+    case IOComponentEnum::SHORT:
       p_clResampler = std::make_unique<ImageResampler<short>>();
       break;
-    case itk::ImageIOBase::USHORT:
+    case IOComponentEnum::USHORT:
       p_clResampler = std::make_unique<ImageResampler<unsigned short>>();
       break;
-    case itk::ImageIOBase::INT:
+    case IOComponentEnum::INT:
       p_clResampler = std::make_unique<ImageResampler<int>>();
       break;
-    case itk::ImageIOBase::UINT:
+    case IOComponentEnum::UINT:
       p_clResampler = std::make_unique<ImageResampler<unsigned int>>();
       break;
-    case itk::ImageIOBase::FLOAT:
+    case IOComponentEnum::FLOAT:
       p_clResampler = std::make_unique<ImageResampler<float>>();
       break;
     default:
       break;
     }
     break;
-  case itk::ImageIOBase::RGB:
+  case IOPixelEnum::RGB:
     switch (eComponentType) {
-    case itk::ImageIOBase::UCHAR:
+    case IOComponentEnum::UCHAR:
       p_clResampler = std::make_unique<ImageResampler<itk::RGBPixel<unsigned char>>>();
       break;
     default:
       break;
     }
     break;
-  case itk::ImageIOBase::RGBA:
+  case IOPixelEnum::RGBA:
     switch (eComponentType) {
-    case itk::ImageIOBase::UCHAR:
+    case IOComponentEnum::UCHAR:
       p_clResampler = std::make_unique<ImageResampler<itk::RGBAPixel<unsigned char>>>();
       break;
     default:
       break;
     }
     break;
-  case itk::ImageIOBase::VECTOR:
+  case IOPixelEnum::VECTOR:
     // TODO: Finish this?
     break;
   default:
